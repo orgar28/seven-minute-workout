@@ -25,15 +25,15 @@ main{max-width:1240px;margin:0 auto;padding:clamp(20px,4vw,48px) max(5vw,16px)}
 .hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(20px,4vw,48px);align-items:center;margin-bottom:40px}
 .hero h1{font-size:clamp(36px,5vw,52px)}.sum{color:var(--mute);font-size:17px;margin:12px 0 22px}.streak{margin:18px 0 0;color:var(--mute)}.streak b{color:var(--ink)}
 .fig{position:relative;min-height:340px}.fig>svg{position:absolute;inset:0;width:100%;height:100%}
-.heroFig{background:var(--card);border-radius:24px}.heroFig .lbl{position:absolute;left:18px;bottom:14px;font-weight:600;color:var(--mute)}
+.heroFig{background:var(--card);border-radius:24px}.heroFig .lbl{position:absolute;left:18px;top:14px;font-weight:600;color:var(--mute)}
 svg .floor{stroke:var(--line);stroke-width:3;stroke-linecap:round}
-svg .near polyline,svg .far polyline{fill:none;stroke:var(--ink);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
-svg .far{opacity:.38}svg.front .far{opacity:1}svg .near circle{fill:var(--ink)}
+svg .near path,svg .far path,svg .torso{fill:none;stroke:var(--ink);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}svg .torso{stroke-width:9}
+svg .far{opacity:.4}svg.front .far{opacity:1}svg .bod circle{fill:var(--ink)}svg .shd{fill:var(--ink);opacity:.1}
 .pr rect{fill:var(--mute);opacity:.6}.pr path{stroke:var(--mute);opacity:.6;stroke-width:5;fill:none;stroke-linecap:round}
 h2.sec{font-size:30px;margin:0 0 16px}
 .exlist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .exlist li{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:center;background:var(--card);border-radius:16px;padding:12px}
-.exlist svg{width:72px;height:72px}.exlist svg .near polyline,.exlist svg .far polyline{stroke-width:9}.exlist b{display:block}.exlist small{color:var(--mute);font-size:14px;line-height:1.35;display:block}
+.exlist svg{width:72px;height:72px}.exlist svg .near path,.exlist svg .far path{stroke-width:9}.exlist svg .torso{stroke-width:11}.exlist b{display:block}.exlist small{color:var(--mute);font-size:14px;line-height:1.35;display:block}
 .exlist .n{color:var(--work);font:700 15px "Barlow Condensed",sans-serif;margin-right:6px}
 /* history */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:28px}
@@ -56,7 +56,7 @@ h2.sec{font-size:30px;margin:0 0 16px}
 /* player */
 .player{position:fixed;inset:0;z-index:50;display:grid;grid-template-rows:auto minmax(0,1fr) auto;--ph:var(--ink);background:var(--ph);color:#fff;transition:background .4s}
 .player[data-p=work]{--ph:var(--work)}.player[data-p=rest]{--ph:var(--rest)}.player[data-p=ready]{--ph:#1d1d1f}.player[data-p=done]{--ph:var(--work)}
-.player svg .near polyline,.player svg .far polyline{stroke:#fff}.player svg .near circle{fill:#fff}.player svg .floor{stroke:rgba(255,255,255,.35)}.player .pr rect{fill:#fff;opacity:.35}.player .pr path{stroke:#fff;opacity:.35}
+.player svg .near path,.player svg .far path,.player svg .torso{stroke:#fff}.player svg .bod circle{fill:#fff}.player svg .shd{fill:#000;opacity:.15}.player svg .floor{stroke:rgba(255,255,255,.35)}.player .pr rect{fill:#fff;opacity:.35}.player .pr path{stroke:#fff;opacity:.35}
 .player svg.preview{opacity:.55}
 .pbar{display:flex;gap:3px;padding:14px max(4vw,14px) 0}.pbar span{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.25);overflow:hidden}.pbar span i{display:block;height:100%;background:#fff;width:0}
 .pmain{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:center;gap:20px;padding:10px max(4vw,14px);max-width:1240px;width:100%;margin:0 auto}
@@ -121,42 +121,76 @@ h2.sec{font-size:30px;margin:0 0 16px}
 <script>
 {
 const $=id=>document.getElementById(id);
-// pose: [head, shoulder, hip, nearElbow, nearHand, farElbow, farHand, nearKnee, nearFoot, farKnee, farFoot]
-const P=s=>s.split(/[ ,]+/).map(Number);
-const ST=P('100,62 100,78 100,128 102,104 104,128 98,104 96,128 102,156 102,185 98,156 98,185');
-const ST2=P('100,63 100,79 100,129 102,105 104,129 98,105 96,129 102,156 102,185 98,156 98,185');
-const UP=P('100,60 100,76 100,126 110,52 118,28 90,52 82,28 102,156 102,185 98,156 98,185');
-const PUa=P('154,124 140,131 90,157 140,158 140,185 138,158 137,185 65,170 40,183 65,171 40,184');
-const PUb=P('157,158 140,165 90,172 124,177 140,185 122,177 137,185 65,178 40,183 65,178 40,184');
-const LUa=P('100,62 100,78 100,128 86,100 96,124 114,100 104,124 102,156 100,185 98,156 98,185');
+// ---- rig: fixed bone lengths, two-bone IK, keyframed poses ----
+// Angles are degrees, 0 = up, 90 = forward (+x), 180 = down. Figure faces right.
+// Pose: h hip [x,y], t torso angle, hd head tilt, c spine curl, a [nearArm,farArm], l [nearLeg,farLeg], f [nearToe,farToe].
+// Limb: [angle,reach] from its joint, [angle,reach,2] relative to torso, or [x,y,1] a planted world point.
+const L={t:48,n:17,ua:25,fa:24,th:30,sh:30,ft:8},FL=189,R=Math.PI/180;
+const dir=a=>[Math.sin(a*R),-Math.cos(a*R)],add=(p,v,k=1)=>[p[0]+v[0]*k,p[1]+v[1]*k];
+const lerp=(a,b,f)=>a+(b-a)*f,lp=(p,q,f)=>[lerp(p[0],q[0],f),lerp(p[1],q[1],f)];
+function ik(a,b,l1,l2,s){const dx=b[0]-a[0],dy=b[1]-a[1],d0=Math.hypot(dx,dy)||.001,ux=dx/d0,uy=dy/d0,d=Math.min(Math.max(d0,Math.abs(l1-l2)+.5),l1+l2-.01),x=(l1*l1-l2*l2+d*d)/(2*d),h=Math.sqrt(Math.max(0,l1*l1-x*x));
+ return[[a[0]+ux*x-s*h*uy,a[1]+uy*x+s*h*ux],[a[0]+ux*d,a[1]+uy*d]]}
+function joints(ex,p){const S=add(p.h,dir(p.t),L.t),hd=p.t+(p.hd||0),w=ex.front?9:0,v=ex.front?6:0;
+ return{H:p.h,S,head:add(S,dir(hd),L.n),neck:add(S,dir(hd),6),sa:[add(S,[w,0]),add(S,[-w,0])],ha:[add(p.h,[v,0]),add(p.h,[-v,0])]}}
+const tgt=(s,o,T,len)=>s[2]===1?[s[0],s[1]]:add(o,dir(s[0]+(s[2]===2?T:0)),len*s[1]);
+const toe=(p,i)=>p.f?p.f[i]:90;
+function limb(a,b,pa,pb,ta,tb,len,f){if(a[2]!==1&&a[2]===b[2])return[lerp(a[0],b[0],f),lerp(a[1],b[1],f),a[2]];return[...lp(tgt(a,pa,ta,len),tgt(b,pb,tb,len),f),1]}
+function mix(ex,A,B,f){if(A===B||f<=0)return A;const ja=joints(ex,A),jb=joints(ex,B);
+ return{h:lp(A.h,B.h,f),t:lerp(A.t,B.t,f),hd:lerp(A.hd||0,B.hd||0,f),c:lerp(A.c||0,B.c||0,f),f:[0,1].map(i=>lerp(toe(A,i),toe(B,i),f)),
+  a:[0,1].map(i=>limb(A.a[i],B.a[i],ja.sa[i],jb.sa[i],A.t,B.t,L.ua+L.fa,f)),l:[0,1].map(i=>limb(A.l[i],B.l[i],ja.ha[i],jb.ha[i],A.t,B.t,L.th+L.sh,f))}}
+const ease=f=>f<.5?4*f*f*f:1-((-2*f+2)**3)/2;
+function poseAt(ex,t){const K=ex.k,D=ex.d,T=D.reduce((a,b)=>a+b,0);let x=((t%T)+T)%T,i=0;while(i<D.length-1&&x>D[i]){x-=D[i];i++}
+ let p=mix(ex,K[i],K[(i+1)%K.length],ease(Math.min(1,x/D[i])));
+ if(ex.br){const b=Math.sin(t*2.2)*ex.br;p=Object.assign({},p,{h:[p.h[0],p.h[1]+b],t:p.t+b*.5})}return p}
+const f1=n=>n.toFixed(1),pt=p=>f1(p[0])+' '+f1(p[1]);
+function geom(ex,p){const j=joints(ex,p),b=ex.bend||[1,1,-1,-1];
+ const arm=i=>{const[e,h]=ik(j.sa[i],tgt(p.a[i],j.sa[i],p.t,L.ua+L.fa),L.ua,L.fa,b[i]);return`M${pt(j.sa[i])}L${pt(e)}L${pt(h)}`};
+ const leg=i=>{const[k,a]=ik(j.ha[i],tgt(p.l[i],j.ha[i],p.t,L.th+L.sh),L.th,L.sh,b[2+i]);return`M${pt(j.ha[i])}L${pt(k)}L${pt(a)}L${pt(add(a,dir(toe(p,i)),L.ft))}`};
+ const c=add(lp(j.H,j.S,.5),[Math.cos(p.t*R),Math.sin(p.t*R)],p.c||0);
+ return{fa:arm(1),fl:leg(1),na:arm(0),nl:leg(0),head:j.head,sx:(j.H[0]+j.S[0])/2,
+  body:`M${pt(j.H)}Q${pt(c)} ${pt(j.S)}L${pt(j.neck)}`+(ex.front?`M${pt(j.sa[0])}L${pt(j.sa[1])}M${pt(j.ha[0])}L${pt(j.ha[1])}`:'')}}
+const W=(x,y)=>[x,y,1],swapL=k=>Object.assign({},k,{l:[k.l[1],k.l[0]],a:[k.a[1],k.a[0]],f:k.f&&[k.f[1],k.f[0]]});
+// shared poses
+const PU={h:[98.4,156.5],t:70,hd:12,a:[W(124,185),W(121,185)],l:[W(42,177),W(39,178)],f:[170,170]};
+const PD={h:[101.3,168.1],t:81.5,hd:12,a:[W(124,185),W(121,185)],l:[W(42,177),W(39,178)],f:[170,170]};
+const JA={h:[100,125],t:0,a:[[165,1],[-165,1]],l:[[176,1],[-176,1]],f:[90,-90]},JM={h:[100,119],t:0,a:[[95,1],[-95,1]],l:[[168,1],[-168,1]],f:[100,-100]},JB={h:[100,130],t:0,a:[[18,1],[-18,1]],l:[[155,1],[-155,1]],f:[110,-110]};
+const CD={h:[100,181],t:-86,hd:-4,a:[[160,1,2],[163,1,2]],l:[W(140,185),W(137,185)]},CU={h:[100,181],t:-50,hd:22,c:-3,a:[[160,1,2],[163,1,2]],l:[W(140,185),W(137,185)]};
+const sk=[{h:[92,125],t:2,a:[[172,1],[188,1]],l:[W(94,185),W(90,185)]},{h:[94,124],t:4,a:[[165,1],[192,1]],l:[W(116,146),W(90,185)],f:[90,90]},{h:[96,126],t:8,a:[[160,1],[195,1]],l:[W(132,146),W(90,185)]},
+ {h:[120,100],t:10,a:[[185,1],[160,1]],l:[W(133,146),W(112,144)]},{h:[134,86],t:2,a:[[176,1],[184,1]],l:[W(136,146),W(131,146)]},{h:[122,104],t:6,a:[[170,1],[190,1]],l:[W(136,146),W(112,144)]},
+ {h:[100,125],t:6,a:[[172,1],[188,1]],l:[W(134,146),W(96,185)]},{h:[96,125],t:3,a:[[176,1],[184,1]],l:[W(113,144),W(95,185)]}];
+const SQU={h:[96,125],t:0,a:[[178,1],[182,1]],l:[W(98,185),W(95,185)]},SQD={h:[72,154],t:42,hd:-25,a:[[88,1],[92,1]],l:[W(98,185),W(95,185)]};
+const DU={h:[85,148],t:4,hd:-4,a:[W(82,148),W(79,148)],l:[W(124,185),W(121,185)]},DD={h:[88,172],t:4,hd:-4,a:[W(82,148),W(79,148)],l:[W(124,185),W(121,185)]};
+const HA={h:[100,121],t:-3,a:[[198,.65],[110,.5]],l:[[135,.71],[180,1]],f:[120,90]},HM={h:[100,125],t:-2,a:[[150,.6],[160,.6]],l:[[178,1],[182,1]]},HB={h:[100,121],t:-3,a:[[110,.5],[198,.65]],l:[[180,1],[135,.71]],f:[90,120]};
+const LA={h:[96,125],t:0,a:[[176,1],[184,1]],l:[W(98,185),W(94,185)]},LB={h:[92,154],t:2,a:[[176,1],[184,1]],l:[W(128,185),W(56,179)],f:[90,150]},LC=swapL(LB);
+const RA={h:[92,162],t:60,hd:-20,a:[[0,1],W(121,185)],l:[W(34,177),W(31,179)],f:[170,170]},RB=Object.assign({},RA,{a:[W(124,185),[0,1]]});
 const EX=[
- {n:'Jumping jacks',tip:'Jump feet wide as your arms sweep overhead, then back together.',t:.9,front:1,ps:[P('100,62 100,78 100,128 112,104 116,128 88,104 84,128 105,156 107,185 95,156 93,185'),P('100,58 100,74 100,124 120,56 130,32 80,56 70,32 116,152 128,182 84,152 72,182')]},
- {n:'Wall sit',tip:'Back flat against a wall, thighs parallel to the floor. Hold.',t:3,prop:'wall',ps:[P('72,74 71,90 72,140 84,114 102,128 82,114 100,130 106,140 106,185 104,140 104,185'),P('72,72 71,89 72,140 84,113 102,128 82,113 100,130 106,140 106,185 104,140 104,185')]},
- {n:'Push-up',tip:'Body in one straight line, lower your chest to just above the floor.',t:1.8,ps:[PUa,PUb]},
- {n:'Abdominal crunch',tip:'Knees bent, curl your shoulders off the floor, lower slowly.',t:1.8,ps:[P('38,174 52,181 100,180 48,164 36,170 46,164 34,170 125,150 146,184 123,150 144,184'),P('52,146 64,160 100,180 72,142 52,140 70,142 50,140 125,150 146,184 123,150 144,184')]},
- {n:'Step-up onto chair',tip:'Step up, stand tall, step down. Alternate the leading leg. Use a sturdy chair.',t:2.2,prop:'chairR',ps:[P('102,62 100,78 100,128 110,102 118,120 92,104 88,128 124,118 132,145 98,156 96,185'),P('140,22 138,38 138,88 142,64 148,88 134,64 130,88 140,116 138,145 134,116 132,145')]},
- {n:'Squat',tip:'Feet shoulder-width, sit hips back and down, knees over toes.',t:2.2,ps:[ST,P('108,92 100,106 78,150 126,110 152,112 124,112 150,114 112,152 100,185 110,153 98,185')]},
- {n:'Triceps dip on chair',tip:'Hands on the seat edge, bend elbows to 90°, press back up.',t:2,prop:'chairL',ps:[P('86,65 84,81 88,131 82,108 80,135 80,108 78,135 120,150 150,184 118,151 148,184'),P('88,92 86,108 90,158 60,118 80,135 58,118 78,135 122,162 152,184 120,163 150,184')]},
- {n:'Plank',tip:'On your forearms, hips level, squeeze your core and glutes.',t:3,ps:[P('155,150 140,157 90,165 140,183 165,183 138,183 163,183 65,174 40,183 65,175 40,184'),P('155,149 140,156 90,162 140,183 165,183 138,183 163,183 65,173 40,183 65,174 40,184')]},
- {n:'High knees',tip:'Run in place, driving each knee up to hip height.',t:.6,ps:[P('102,62 100,78 100,128 86,100 80,124 112,98 122,80 126,124 124,152 100,156 98,185'),P('102,60 100,76 100,126 112,98 122,80 86,100 80,124 100,156 98,184 126,122 124,150')]},
- {n:'Lunge',tip:'Step forward until both knees bend to 90°, push back. Alternate legs.',t:4.4,ps:[LUa,P('101,79 100,95 100,145 86,117 96,141 114,117 104,141 130,150 130,185 80,178 56,183'),LUa,P('101,79 100,95 100,145 86,117 96,141 114,117 104,141 80,178 56,183 130,150 130,185')]},
- {n:'Push-up and rotation',tip:'Do a push-up, then rotate and reach one arm to the ceiling. Alternate sides.',t:4,ps:[PUa,PUb,PUa,P('154,124 140,131 90,157 140,104 141,78 138,158 137,185 65,170 40,183 65,170 42,180')]},
- {n:'Side plank',tip:'On one forearm, hips lifted in a straight line. Switch sides halfway.',t:3,sides:1,ps:[P('155,150 140,157 90,169 140,130 141,104 140,183 165,183 65,176 40,182 65,177 40,184'),P('155,149 140,156 90,166 140,129 141,103 140,183 165,183 65,175 40,182 65,176 40,184')]}
+ {n:'Jumping jacks',tip:'Jump feet wide as your arms sweep overhead, then back together.',front:1,bend:[1,-1,-1,1],k:[JA,JM,JB,JM],d:[.2,.2,.2,.2],th:2},
+ {n:'Wall sit',tip:'Back flat against a wall, thighs parallel to the floor. Hold.',prop:'wall',k:[{h:[82,155],t:-1,a:[W(100,150),W(98,151)],l:[W(112,185),W(109,185)]}],d:[3],br:1.2,th:0},
+ {n:'Push-up',tip:'Body in one straight line, lower your chest to just above the floor.',k:[PU,PD,PD,PU],d:[.8,.12,.65,.25],th:0},
+ {n:'Abdominal crunch',tip:'Knees bent, curl your shoulders off the floor, lower slowly.',k:[CD,CU,CU,CD],d:[.7,.2,.7,.3]},
+ {n:'Step-up onto chair',tip:'Step up, stand tall, step down. Alternate the leading leg. Use a sturdy chair.',prop:'chairR',k:sk.concat(sk.map(swapL)),d:Array(16).fill(.34),th:4},
+ {n:'Squat',tip:'Feet shoulder-width, sit hips back and down, knees over toes.',k:[SQU,SQD,SQD,SQU],d:[.9,.2,.75,.35]},
+ {n:'Triceps dip on chair',tip:'Hands on the seat edge, bend elbows to 90°, press back up.',prop:'chairL',k:[DU,DD,DD,DU],d:[.85,.1,.75,.3]},
+ {n:'Plank',tip:'On your forearms, hips level, squeeze your core and glutes.',k:[{h:[101,167],t:80.7,hd:10,a:[W(170,185),W(167,185)],l:[W(42,177),W(39,178)],f:[170,170]}],d:[3],br:1,th:0},
+ {n:'High knees',tip:'Run in place, driving each knee up to hip height.',k:[HA,HM,HB,HM],d:[.16,.16,.16,.16],th:0},
+ {n:'Lunge',tip:'Step forward until both knees bend to 90°, push back. Alternate legs.',k:[LA,LB,LB,LA,LA,LC,LC,LA],d:[.85,.2,.75,.25,.85,.2,.75,.25]},
+ {n:'Push-up and rotation',tip:'Do a push-up, then rotate and reach one arm to the ceiling. Alternate sides.',k:[PU,PD,PU,RA,RA,PU,PD,PU,RB,RB],d:[.7,.6,.6,.35,.6,.7,.6,.6,.35,.6],th:3},
+ {n:'Side plank',tip:'On one forearm, hips lifted in a straight line. Switch sides halfway.',sides:1,k:[{h:[100,168],t:77,hd:-10,a:[W(170,185),[2,1]],l:[W(42,180),W(44,178)]}],d:[3],br:1,th:0}
 ];
-const PROPS={wall:'<g class="pr"><rect x="40" y="36" width="20" height="150"/></g>',
- chairR:'<g class="pr"><rect x="118" y="143" width="56" height="7" rx="2"/><path d="M124 150v36M168 150v36M171 143V92"/></g>',
- chairL:'<g class="pr"><rect x="28" y="133" width="58" height="7" rx="2"/><path d="M34 140v46M80 140v46M31 133V84"/></g>'};
-const pts=(q,...ix)=>ix.map(i=>q[i*2].toFixed(1)+','+q[i*2+1].toFixed(1)).join(' ');
-const body=q=>`<line class="floor" x1="6" y1="187" x2="194" y2="187"/>`;
-function figStr(ex,q){return `<svg viewBox="0 0 200 200" class="${ex.front?'front':''}" aria-hidden="true">${body()}${PROPS[ex.prop]||''}<g class="far"><polyline points="${pts(q,1,5,6)}"/><polyline points="${pts(q,2,9,10)}"/></g><g class="near"><polyline points="${pts(q,0,1,2)}"/><polyline points="${pts(q,1,3,4)}"/><polyline points="${pts(q,2,7,8)}"/><circle r="11" cx="${q[0]}" cy="${q[1]}"/></g></svg>`}
-function mkFig(svg){
- svg.innerHTML=body()+'<g class="propg"></g><g class="far"><polyline/><polyline/></g><g class="near"><polyline/><polyline/><polyline/><circle r="11"/></g>';
- const [fa,fl]=svg.querySelectorAll('.far polyline'),[tr,na,nl]=svg.querySelectorAll('.near polyline'),hd=svg.querySelector('circle'),pg=svg.querySelector('.propg');let cur;
- return{set(ex){if(cur===ex)return;cur=ex;pg.innerHTML=PROPS[ex.prop]||'';svg.classList.toggle('front',!!ex.front)},
-  pose(q){fa.setAttribute('points',pts(q,1,5,6));fl.setAttribute('points',pts(q,2,9,10));tr.setAttribute('points',pts(q,0,1,2));na.setAttribute('points',pts(q,1,3,4));nl.setAttribute('points',pts(q,2,7,8));hd.setAttribute('cx',q[0]);hd.setAttribute('cy',q[1])}}
-}
-function poseAt(ps,period,sec){const n=ps.length,x=((sec/period)*n)%n,i=Math.floor(x),f=x-i,e=f<.5?2*f*f:1-((-2*f+2)**2)/2,a=ps[i],b=ps[(i+1)%n];return a.map((v,j)=>v+(b[j]-v)*e)}
-const DONE={n:'Done',t:2,front:1,ps:[UP,P('100,58 100,74 100,124 110,50 118,26 90,50 82,26 102,155 102,185 98,155 98,185')]};
+const DONE={n:'Done',front:1,bend:[1,-1,-1,1],k:[{h:[100,125],t:0,a:[[28,1],[-28,1]],l:[[176,1],[-176,1]],f:[90,-90]},{h:[100,119],t:0,a:[[18,1],[-18,1]],l:[[178,1],[-178,1]],f:[90,-90]}],d:[.35,.35]};
+const PROPS={wall:'<g class="pr"><rect x="48" y="36" width="20" height="153"/></g>',
+ chairR:'<g class="pr"><rect x="118" y="150" width="56" height="7" rx="2"/><path d="M124 157v32M168 157v32M171 150V100"/></g>',
+ chairL:'<g class="pr"><rect x="22" y="150" width="60" height="7" rx="2"/><path d="M28 157v32M76 157v32M25 150V96"/></g>'};
+const SKEL=`<line class="floor" x1="6" y1="${FL}" x2="194" y2="${FL}"/><g class="propg"></g><g class="who"><ellipse class="shd" cy="${FL}" rx="34" ry="3.5"/><g class="far"><path/><path/></g><g class="bod"><path class="torso"/><circle r="11"/></g><g class="near"><path/><path/></g></g>`;
+function paint(svg,ex,p,m){const g=geom(ex,p),q=s=>svg.querySelectorAll(s),[fa,fl]=q('.far path'),[na,nl]=q('.near path');
+ fa.setAttribute('d',g.fa);fl.setAttribute('d',g.fl);na.setAttribute('d',g.na);nl.setAttribute('d',g.nl);svg.querySelector('.torso').setAttribute('d',g.body);
+ const c=svg.querySelector('.bod circle');c.setAttribute('cx',f1(g.head[0]));c.setAttribute('cy',f1(g.head[1]));svg.querySelector('.shd').setAttribute('cx',f1(g.sx))}
+function figStr(ex){const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('viewBox','0 0 200 200');s.setAttribute('aria-hidden','true');if(ex.front)s.classList.add('front');
+ s.innerHTML=SKEL;s.querySelector('.propg').innerHTML=PROPS[ex.prop]||'';paint(s,ex,ex.k[ex.th??Math.min(1,ex.k.length-1)]);return s.outerHTML}
+function mkFig(svg){svg.innerHTML=SKEL;const pg=svg.querySelector('.propg'),who=svg.querySelector('.who');let cur,mir;
+ return{draw(ex,t,m=false){if(cur!==ex){cur=ex;pg.innerHTML=PROPS[ex.prop]||'';svg.classList.toggle('front',!!ex.front)}
+  if(m!==mir){mir=m;const tf=m?'translate(200 0) scale(-1 1)':'';who.setAttribute('transform',tf);pg.setAttribute('transform',tf)}
+  paint(svg,ex,poseAt(ex,t))}}}
 
 // storage
 const LS={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -192,7 +226,7 @@ const totalSec=()=>cfg.rounds*EX.length*cfg.work+(cfg.rounds*EX.length-1)*cfg.re
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 // workout view
-$('exlist').innerHTML=EX.map((e,i)=>`<li>${figStr(e,e.ps[1])}<div><b><span class="n">${i+1}</span>${e.n}</b><small>${e.tip}</small></div></li>`).join('');
+$('exlist').innerHTML=EX.map((e,i)=>`<li>${figStr(e)}<div><b><span class="n">${i+1}</span>${e.n}</b><small>${e.tip}</small></div></li>`).join('');
 function renderHome(){$('sum').textContent=`${mmss(totalSec())} total · ${EX.length*cfg.rounds} intervals · ${cfg.work}s work, ${cfg.rest}s rest${cfg.rounds>1?' · '+cfg.rounds+' rounds':''}`;
  const st=streak(),today=sessions.some(s=>s.d===key(new Date()));$('streakLine').innerHTML=today?`Done today. Streak: <b>${st} day${st==1?'':'s'}</b>.`:st?`Current streak: <b>${st} day${st==1?'':'s'}</b>. Keep it going today.`:'No streak yet. Today is a good day to start.'}
 const heroFig=mkFig($('heroSvg'));
@@ -275,10 +309,10 @@ setInterval(tick,150);
 
 // animation loop
 function frame(now){const t=now/1000;
- if(S&&!pl.hidden){if(!$('done').hidden){pFig.set(DONE);pFig.pose(poseAt(DONE.ps,DONE.t,t))}else{const g=S.q[S.i],ex=EX[g.x];pFig.set(ex);pFig.pose(poseAt(ex.ps,ex.t,g.t==='work'?el():el()*.5))}}
- else if(!$('v-workout').hidden){const ex=EX[Math.floor(t/5)%EX.length];heroFig.set(ex);heroFig.pose(poseAt(ex.ps,ex.t,t));if($('heroLbl').textContent!==ex.n)$('heroLbl').textContent=ex.n}
+ if(S&&!pl.hidden){if(!$('done').hidden)pFig.draw(DONE,t);else{const g=S.q[S.i],ex=EX[g.x],w=g.t==='work';pFig.draw(ex,w?el():el()*.5,!!ex.sides&&w&&el()>=g.d/2)}}
+ else if(!$('v-workout').hidden){const n=Math.floor(t/6),ex=EX[n%EX.length];heroFig.draw(ex,t,!!ex.sides&&t%6>3);if($('heroLbl').textContent!==ex.n)$('heroLbl').textContent=ex.n}
  requestAnimationFrame(frame)}
-if(matchMedia('(prefers-reduced-motion: reduce)').matches){heroFig.set(EX[0]);heroFig.pose(EX[0].ps[1]);$('heroLbl').textContent=EX[0].n}
+if(matchMedia('(prefers-reduced-motion: reduce)').matches){heroFig.draw(EX[0],0);$('heroLbl').textContent=EX[0].n}
 requestAnimationFrame(frame);
 
 // routing
